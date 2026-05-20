@@ -147,6 +147,31 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 .cal-entry-name{font-size:13px;font-weight:500}
 .cal-entry-meta{font-size:11px;color:var(--muted);margin-top:2px}
 .cal-selected-label{font-size:10px;color:var(--muted);margin:0 0 8px;font-family:'DM Mono',monospace;letter-spacing:.06em;text-transform:uppercase}
+/* Date picker button */
+.date-pick-btn{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;padding:10px 12px;text-align:left;cursor:pointer}
+.date-pick-btn.has-date{color:var(--text)}
+.date-pick-btn:not(.has-date){color:var(--muted)}
+
+/* Picker tabs */
+.picker-tab{background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:13px;padding:6px 12px;cursor:pointer;font-family:'DM Sans',sans-serif}
+.picker-tab.active{background:var(--accent-dim);border-color:rgba(200,240,96,.3);color:var(--accent)}
+
+/* Picker calendar day cells */
+.pday{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:13px;cursor:pointer;color:var(--text)}
+.pday:hover{background:var(--bg3)}
+.pday.other{color:var(--muted)}
+.pday.today-p{font-weight:600;color:var(--accent)}
+.pday.selected-p{background:var(--accent)!important;color:#0f1117;border-radius:50%;font-weight:600}
+.pday.dow-label{color:var(--muted);font-size:10px;font-family:'DM Mono',monospace;cursor:default}
+.pday.dow-label:hover{background:none}
+
+/* Wheel columns */
+.wheel-col{flex:1;overflow-y:scroll;scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;position:relative;z-index:2}
+.wheel-col::-webkit-scrollbar{display:none}
+.wheel-item{height:42px;display:flex;align-items:center;justify-content:center;font-size:15px;scroll-snap-align:center;cursor:pointer;color:var(--muted);transition:color .1s,font-size .1s}
+.wheel-item.active-item{color:var(--text);font-size:17px;font-weight:500}
+/* padding so first/last items can center */
+.wheel-pad{height:79px;flex-shrink:0}
 </style>
 </head>
 <body>
@@ -213,11 +238,13 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
           <div class="form-section form-row">
             <div>
               <label class="form-label">Start date</label>
-              <input type="date" id="f-start"/>
+              <button type="button" class="date-pick-btn" id="f-start-btn" onclick="openPicker('start')">Select date</button>
+              <input type="hidden" id="f-start"/>
             </div>
             <div>
               <label class="form-label">End date</label>
-              <input type="date" id="f-end"/>
+              <button type="button" class="date-pick-btn" id="f-end-btn" onclick="openPicker('end')">Select date</button>
+              <input type="hidden" id="f-end"/>
             </div>
           </div>
           <div class="form-section form-row">
@@ -332,9 +359,81 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       Settings
     </button>
   </div>
+  <!-- DATE PICKER MODAL -->
+  <div id="picker-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:flex-end;justify-content:center" onclick="closePicker(event)">
+    <div id="picker-sheet" style="background:var(--bg2);border-radius:20px 20px 0 0;width:100%;max-width:420px;padding-bottom:calc(16px + var(--safe-bottom));overflow:hidden">
+      <div style="display:flex;padding:14px 16px 0;gap:8px;align-items:center">
+        <button class="picker-tab active" id="ptab-cal" onclick="switchPickerTab('cal')">📅 Calendar</button>
+        <button class="picker-tab" id="ptab-wheel" onclick="switchPickerTab('wheel')">🎡 Wheels</button>
+        <button onclick="closePicker()" style="margin-left:auto;background:none;border:none;color:var(--muted);font-size:24px;cursor:pointer;line-height:1">×</button>
+      </div>
+      <div id="picker-cal" style="padding:12px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <button onclick="pickerCalPrev()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);width:32px;height:32px;font-size:18px;cursor:pointer">‹</button>
+          <span id="picker-cal-label" style="font-family:'DM Mono',monospace;font-size:14px;font-weight:500"></span>
+          <button onclick="pickerCalNext()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);width:32px;height:32px;font-size:18px;cursor:pointer">›</button>
+        </div>
+        <div id="picker-cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px"></div>
+      </div>
+      <div id="picker-wheel" style="display:none;padding:12px 16px">
+        <div style="display:flex;gap:4px;height:200px;position:relative">
+          <div style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:42px;background:var(--bg3);border-radius:10px;border:1px solid rgba(200,240,96,.25);pointer-events:none;z-index:1"></div>
+          <div class="wheel-col" id="wheel-month"></div>
+          <div class="wheel-col" id="wheel-day"></div>
+          <div class="wheel-col" id="wheel-year"></div>
+        </div>
+      </div>
+      <div style="padding:8px 16px 0">
+        <button class="btn btn-primary" onclick="confirmPicker()">Confirm date</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- EDIT MODAL -->
+<div id="edit-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:flex-end;justify-content:center" onclick="closeEdit(event)">
+  <div id="edit-sheet" style="background:var(--bg2);border-radius:20px 20px 0 0;width:100%;max-width:420px;padding:16px 16px calc(24px + var(--safe-bottom));overflow-y:auto;max-height:90vh">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <span style="font-size:15px;font-weight:500">Edit entry</span>
+      <button onclick="closeEdit()" style="background:none;border:none;color:var(--muted);font-size:24px;cursor:pointer;line-height:1">×</button>
+    </div>
+    <div class="form-section">
+      <label class="form-label">Title</label>
+      <input type="text" id="e-title" placeholder="e.g. Beach vacation"/>
+    </div>
+    <div class="form-section form-row">
+      <div>
+        <label class="form-label">Start date</label>
+        <button type="button" class="date-pick-btn" id="e-start-btn" onclick="openEditPicker('start')">Select date</button>
+        <input type="hidden" id="e-start"/>
+      </div>
+      <div>
+        <label class="form-label">End date</label>
+        <button type="button" class="date-pick-btn" id="e-end-btn" onclick="openEditPicker('end')">Select date</button>
+        <input type="hidden" id="e-end"/>
+      </div>
+    </div>
+    <div class="form-section form-row">
+      <div>
+        <label class="form-label">Type</label>
+        <select id="e-type" onchange="toggleEditHours()">
+          <option>PTO</option>
+          <option>Life Leave</option>
+          <option>Celebration Leave</option>
+          <option>Legacy PTO</option>
+        </select>
+      </div>
+      <div id="e-hours-wrap">
+        <label class="form-label">Hours used</label>
+        <input type="number" id="e-hours" placeholder="7.75" min="0" step="0.25"/>
+      </div>
+    </div>
+    <input type="hidden" id="e-id"/>
+    <button class="btn btn-primary" onclick="saveEdit()">Save changes</button>
+  </div>
+</div>
 
 <script>
 const TYPES=['PTO','Life Leave','Celebration Leave','Legacy PTO'];
@@ -511,7 +610,10 @@ function entryHTML(e,del=true){
     </div>
     <div class="entry-right">
       ${isHoliday?'':`<div class="entry-hrs">−${fmt(e.hours)}</div>`}
-      ${del?`<button class="entry-del" data-id="${e.id}" onclick="deleteEntry(this)">delete</button>`:''}
+      ${del?`<div style="display:flex;gap:5px;margin-top:5px;justify-content:flex-end">
+        <button class="entry-del" onclick="openEdit('${e.id}')">edit</button>
+        <button class="entry-del" data-id="${e.id}" onclick="deleteEntry(this)">delete</button>
+      </div>`:''}
     </div>
   </div>`;
 }
@@ -831,6 +933,231 @@ function calEntryPill(e){
       <div class="cal-entry-meta">${meta}</div>
     </div>
   </div>`;
+}
+
+// --- Custom Date Picker ---
+let pickerTarget=null; // 'start' or 'end'
+let pickerYear=new Date().getFullYear();
+let pickerMonth=new Date().getMonth();
+let pickerSelected=null; // 'YYYY-MM-DD'
+const MONTH_NAMES_FULL=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTH_NAMES_SHORT=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function openPicker(target){
+  pickerTarget=target;
+  const existing=document.getElementById('f-'+target).value;
+  if(existing){
+    const p=existing.split('-');
+    pickerYear=+p[0]; pickerMonth=+p[1]-1; pickerSelected=existing;
+  } else {
+    const t=new Date(); pickerYear=t.getFullYear(); pickerMonth=t.getMonth(); pickerSelected=null;
+  }
+  renderPickerCal();
+  buildWheels();
+  const ov=document.getElementById('picker-overlay');
+  ov.style.display='flex';
+  setTimeout(()=>ov.style.opacity='1',10);
+}
+
+function closePicker(e){
+  if(e&&e.target!==document.getElementById('picker-overlay')) return;
+  document.getElementById('picker-overlay').style.display='none';
+}
+
+function switchPickerTab(tab){
+  document.getElementById('ptab-cal').classList.toggle('active',tab==='cal');
+  document.getElementById('ptab-wheel').classList.toggle('active',tab==='wheel');
+  document.getElementById('picker-cal').style.display=tab==='cal'?'block':'none';
+  document.getElementById('picker-wheel').style.display=tab==='wheel'?'block':'none';
+  if(tab==='wheel') syncWheelsToSelected();
+}
+
+function confirmPicker(){
+  if(!pickerSelected){toast('Please select a date');return;}
+  const p=pickerSelected.split('-');
+  const label=`${MONTH_NAMES_SHORT[+p[1]-1]} ${+p[2]}, ${p[0]}`;
+
+  if(pickerTarget&&pickerTarget.startsWith('__edit_')){
+    // editing an existing entry
+    const field=pickerTarget.replace('__edit_','');
+    document.getElementById('e-'+field).value=pickerSelected;
+    const btn=document.getElementById('e-'+field+'-btn');
+    btn.textContent=label; btn.classList.add('has-date');
+    document.getElementById('picker-overlay').style.display='none';
+    return;
+  }
+
+  document.getElementById('f-'+pickerTarget).value=pickerSelected;
+  const btn=document.getElementById('f-'+pickerTarget+'-btn');
+  btn.textContent=label;
+  btn.classList.add('has-date');
+  if(pickerTarget==='start'){
+    const endVal=document.getElementById('f-end').value;
+    if(endVal&&endVal<pickerSelected){
+      document.getElementById('f-end').value='';
+      document.getElementById('f-end-btn').textContent='Select date';
+      document.getElementById('f-end-btn').classList.remove('has-date');
+    }
+  }
+  document.getElementById('picker-overlay').style.display='none';
+}
+
+// --- Calendar view ---
+function pickerCalPrev(){pickerMonth--;if(pickerMonth<0){pickerMonth=11;pickerYear--;}renderPickerCal();}
+function pickerCalNext(){pickerMonth++;if(pickerMonth>11){pickerMonth=0;pickerYear++;}renderPickerCal();}
+
+function renderPickerCal(){
+  document.getElementById('picker-cal-label').textContent=`${MONTH_NAMES_FULL[pickerMonth]} ${pickerYear}`;
+  const todayStr=toDateStr(stripTime(new Date()));
+  const firstDay=new Date(pickerYear,pickerMonth,1).getDay();
+  const daysInMonth=new Date(pickerYear,pickerMonth+1,0).getDate();
+  const DAYS=['S','M','T','W','T','F','S'];
+  let html=DAYS.map(d=>`<div class="pday dow-label">${d}</div>`).join('');
+  for(let i=0;i<firstDay;i++) html+=`<div class="pday other"></div>`;
+  for(let d=1;d<=daysInMonth;d++){
+    const ds=`${pickerYear}-${String(pickerMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isSel=ds===pickerSelected;
+    const isToday=ds===todayStr;
+    let cls='pday';
+    if(isSel) cls+=' selected-p';
+    else if(isToday) cls+=' today-p';
+    html+=`<div class="${cls}" onclick="pickerSelectDay('${ds}')">${d}</div>`;
+  }
+  document.getElementById('picker-cal-grid').innerHTML=html;
+}
+
+function pickerSelectDay(ds){
+  pickerSelected=ds;
+  const p=ds.split('-');
+  pickerYear=+p[0]; pickerMonth=+p[1]-1;
+  renderPickerCal();
+}
+
+// --- Wheel view ---
+const wheelMonths=MONTH_NAMES_FULL;
+const wheelDays=Array.from({length:31},(_,i)=>String(i+1));
+const wheelYears=Array.from({length:11},(_,i)=>String(new Date().getFullYear()-2+i));
+
+function buildWheels(){
+  buildWheel('wheel-month',wheelMonths);
+  buildWheel('wheel-day',wheelDays);
+  buildWheel('wheel-year',wheelYears);
+  syncWheelsToSelected();
+}
+
+function buildWheel(id,items){
+  const col=document.getElementById(id);
+  col.innerHTML=`<div class="wheel-pad"></div>`
+    +items.map((v,i)=>`<div class="wheel-item" data-index="${i}">${v}</div>`).join('')
+    +`<div class="wheel-pad"></div>`;
+  col.addEventListener('scroll',()=>onWheelScroll(col,items),{passive:true});
+}
+
+function onWheelScroll(col,items){
+  const idx=Math.round(col.scrollTop/42);
+  col.querySelectorAll('.wheel-item').forEach((el,i)=>el.classList.toggle('active-item',i===idx));
+  updateSelectedFromWheels();
+}
+
+function scrollWheelTo(id,idx){
+  const col=document.getElementById(id);
+  col.scrollTop=idx*42;
+  col.querySelectorAll('.wheel-item').forEach((el,i)=>el.classList.toggle('active-item',i===idx));
+}
+
+function syncWheelsToSelected(){
+  const d=pickerSelected?pickerSelected.split('-'):null;
+  const m=d?+d[1]-1:pickerMonth;
+  const day=d?+d[2]-1:0;
+  const y=d?+d[0]:pickerYear;
+  const yIdx=wheelYears.indexOf(String(y));
+  setTimeout(()=>{
+    scrollWheelTo('wheel-month',m);
+    scrollWheelTo('wheel-day',day);
+    scrollWheelTo('wheel-year',yIdx>=0?yIdx:2);
+  },50);
+}
+
+function updateSelectedFromWheels(){
+  const mIdx=Math.round(document.getElementById('wheel-month').scrollTop/42);
+  const dIdx=Math.round(document.getElementById('wheel-day').scrollTop/42);
+  const yIdx=Math.round(document.getElementById('wheel-year').scrollTop/42);
+  const m=Math.min(mIdx,11);
+  const y=parseInt(wheelYears[Math.min(yIdx,wheelYears.length-1)])||pickerYear;
+  const daysInM=new Date(y,m+1,0).getDate();
+  const d=Math.min(dIdx+1,daysInM);
+  pickerSelected=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  pickerYear=y; pickerMonth=m;
+}
+
+// --- Edit entry ---
+let editPickerTarget=null;
+
+function openEdit(sid){
+  const {entries}=getState();
+  const e=entries.find(x=>String(x.id)===String(sid));
+  if(!e) return;
+  document.getElementById('e-id').value=String(e.id);
+  document.getElementById('e-title').value=e.title||'';
+  document.getElementById('e-type').value=e.type;
+  document.getElementById('e-hours').value=e.hours||'';
+  // start date button
+  const sb=document.getElementById('e-start-btn');
+  document.getElementById('e-start').value=e.start||'';
+  sb.textContent=e.start?fmtDate(e.start):'Select date';
+  sb.classList.toggle('has-date',!!e.start);
+  // end date button
+  const eb=document.getElementById('e-end-btn');
+  document.getElementById('e-end').value=e.end||'';
+  eb.textContent=(e.end&&e.end!==e.start)?fmtDate(e.end):'Select date';
+  eb.classList.toggle('has-date',!!(e.end&&e.end!==e.start));
+  toggleEditHours();
+  document.getElementById('edit-overlay').style.display='flex';
+}
+
+function closeEdit(evt){
+  if(evt&&evt.target!==document.getElementById('edit-overlay')) return;
+  document.getElementById('edit-overlay').style.display='none';
+}
+
+function toggleEditHours(){
+  const type=document.getElementById('e-type').value;
+  document.getElementById('e-hours-wrap').style.display=type==='Holidays'?'none':'block';
+}
+
+function openEditPicker(target){
+  editPickerTarget=target;
+  const existing=document.getElementById('e-'+target).value;
+  if(existing){
+    const p=existing.split('-');
+    pickerYear=+p[0]; pickerMonth=+p[1]-1; pickerSelected=existing;
+  } else {
+    const t=new Date(); pickerYear=t.getFullYear(); pickerMonth=t.getMonth(); pickerSelected=null;
+  }
+  // hijack picker confirm to go back to edit modal
+  pickerTarget='__edit_'+target;
+  renderPickerCal();
+  buildWheels();
+  document.getElementById('picker-overlay').style.display='flex';
+}
+
+function saveEdit(){
+  const sid=document.getElementById('e-id').value;
+  const title=document.getElementById('e-title').value.trim();
+  const start=document.getElementById('e-start').value;
+  const end=document.getElementById('e-end').value;
+  const type=document.getElementById('e-type').value;
+  const hoursVal=document.getElementById('e-hours').value;
+  const hours=type==='Holidays'?0:(hoursVal?parseFloat(hoursVal):7.75);
+  if(!title||!start){toast('Fill in title and date');return;}
+  const s=getState();
+  const idx=s.entries.findIndex(x=>String(x.id)===sid);
+  if(idx===-1){toast('Entry not found');return;}
+  s.entries[idx]={...s.entries[idx],title,start,end:end||start,type,hours};
+  save(KE,s.entries);
+  document.getElementById('edit-overlay').style.display='none';
+  toast('Entry updated ✓');
+  renderLog();
 }
 
 checkAutoAccrual();
