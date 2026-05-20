@@ -436,26 +436,11 @@ function renderBalance(){
   else if(isProjected) labelEl.textContent='projected';
   else labelEl.textContent='as of';
 
-  // always start fresh from zero and replay entries + accruals up to asOfStr
+  // Start from manually-set base balances (from Settings)
   let projected={};
-  TYPES.forEach(t=>projected[t]=0);
-
-  // add all accruals from schedule start up to asOf
-  if(schedule && schedule.startDate && schedule.hoursPerPeriod){
-    const schedStart=stripTime(new Date(schedule.startDate+'T12:00:00'));
-    const asOfDate=stripTime(new Date(asOfStr+'T12:00:00'));
-    const pays=getPayDates(schedule.startDate,schedule.type,schedStart,asOfDate);
-    const target=schedule.applyTo||'PTO';
-    projected[target]=(projected[target]||0)+pays.length*schedule.hoursPerPeriod;
-  }
-
-  // add any manual accruals stored in balances that aren't from the schedule
-  // since we can't distinguish, use saved balances as the base and adjust for schedule difference
-  // actually: use saved balances + undo all auto-accruals that happened up to today, then redo up to asOf
-  // simpler: use saved balances as today's truth, then adjust delta
   TYPES.forEach(t=>projected[t]=balances[t]||0);
 
-  // adjust for accrual delta between today and asOf
+  // Add accruals between today and asOf (future or past adjustment)
   if(schedule && schedule.startDate && schedule.hoursPerPeriod){
     const target=schedule.applyTo||'PTO';
     const todayDate=stripTime(new Date(todayStr+'T12:00:00'));
@@ -471,15 +456,10 @@ function renderBalance(){
     }
   }
 
-  // adjust for entries: add back entries after asOf, subtract entries after today that are before/on asOf
+  // Subtract only entries whose start date is on or before the asOf date
   entries.forEach(e=>{
-    if(isProjected){
-      // entries after asOf haven't happened yet at that date — add them back
-      if(e.start>asOfStr) projected[e.type]=(projected[e.type]||0)+e.hours;
-    } else if(isPast){
-      // entries after asOf haven't happened yet at that date — add them back
-      if(e.start>asOfStr) projected[e.type]=(projected[e.type]||0)+e.hours;
-    }
+    if(e.type==='Holidays'||!e.hours) return;
+    if(e.start<=asOfStr) projected[e.type]=(projected[e.type]||0)-e.hours;
   });
 
   const cardClass=t=>t==='PTO'?'pto':t==='Life Leave'?'lifeleave':t==='Holidays'?'holiday':t==='Celebration Leave'?'celebration':'legacypto';
@@ -503,17 +483,17 @@ function renderBalance(){
       const asOfDateP1=new Date(asOfDate.getTime()+86400000);
       pays=getPayDates(schedule.startDate,schedule.type,asOfDateP1,todayDate);
     }
-    const entriesAfterToday=entries.filter(e=>e.start>asOfStr);
+    const entriesInRange=entries.filter(e=>e.type!=='Holidays'&&e.hours&&e.start>todayStr&&e.start<=asOfStr);
     const sign=isProjected?'+':'−';
     noteEl.innerHTML=`<div style="font-size:12px;color:var(--muted);background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:14px;line-height:1.6">
       <span style="color:${isProjected?'var(--accent)':'var(--red)'};font-weight:500">${sign}${(pays.length*schedule.hoursPerPeriod).toFixed(2)}h</span> ${isProjected?'accruing':'removed'} across ${pays.length} pay period${pays.length!==1?'s':''}
-      ${entriesAfterToday.length?` · <span style="font-weight:500">${entriesAfterToday.length} entr${entriesAfterToday.length!==1?'ies':'y'}</span> excluded after this date`:''}
+      ${entriesInRange.length?` · <span style="color:var(--red);font-weight:500">${entriesInRange.length} planned entr${entriesInRange.length!==1?'ies':'y'}</span> deducted`:''}
     </div>`;
   } else {
     noteEl.innerHTML='';
   }
 
-  // recent = upcoming entries only (start >= today), sorted soonest first
+  // upcoming = entries with start >= today, sorted soonest first
   const upcoming=[...entries].filter(e=>e.start>=todayStr).sort((a,b)=>a.start.localeCompare(b.start));
   const el=document.getElementById('recent-list');
   if(!upcoming.length){el.innerHTML='<div class="empty">No upcoming time off planned</div>';return;}
@@ -603,8 +583,7 @@ function addEntry(){
   if(isNaN(hours)){toast('Enter valid hours');return;}
   const s=getState();
   s.entries.push({id:Date.now(),title,start,end:end||start,type,hours});
-  s.balances[type]=(s.balances[type]||0)-hours;
-  save(KE,s.entries);save(KB,s.balances);
+  save(KE,s.entries);
   document.getElementById('f-title').value='';
   document.getElementById('f-start').value='';
   document.getElementById('f-end').value='';
@@ -626,24 +605,18 @@ function addAccrual(){
 }
 
 function deleteEntry(btn){
-  // two-step: first tap shows "confirm?" second tap deletes
   if(btn.dataset.confirming){
     const sid=String(btn.dataset.id);
     const s=getState();
-    const e=s.entries.find(x=>String(x.id)===sid);
-    if(!e){renderLog();return;}
-    if(e.type!=='Holidays'&&e.hours) s.balances[e.type]=(s.balances[e.type]||0)+e.hours;
     s.entries=s.entries.filter(x=>String(x.id)!==sid);
-    save(KE,s.entries);save(KB,s.balances);
+    save(KE,s.entries);
     toast('Entry deleted ✓');
     renderLog();
   } else {
-    // first tap — change button to confirm state
     btn.dataset.confirming='1';
     btn.textContent='confirm?';
     btn.style.color='var(--red)';
     btn.style.borderColor='rgba(255,107,107,.4)';
-    // auto-reset after 3 seconds if not confirmed
     setTimeout(()=>{
       if(btn.dataset.confirming){
         delete btn.dataset.confirming;
