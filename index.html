@@ -61,7 +61,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .bal-card.pto::before{background:var(--accent)}
 .bal-card.lifeleave::before{background:var(--red)}
 .bal-card.celebration::before{background:var(--purple)}
-.bal-card.holiday::before{background:var(--teal)}
 .bal-card.legacypto::before{background:var(--amber)}
 .bal-type{font-size:11px;color:var(--muted);margin-bottom:6px}
 .bal-val{font-family:'DM Mono',monospace;font-size:24px;font-weight:500}
@@ -171,7 +170,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       </div>
       <div class="bal-grid" id="bal-grid"></div>
       <div id="bal-projection-note"></div>
-      <div class="slabel" style="margin-top:4px">Recent</div>
+      <div class="slabel" style="margin-top:4px">Upcoming</div>
       <div id="recent-list"></div>
     </div>
 
@@ -224,17 +223,16 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
           <div class="form-section form-row">
             <div>
               <label class="form-label">Type</label>
-              <select id="f-type">
+              <select id="f-type" onchange="toggleHoursField()">
                 <option>PTO</option>
                 <option>Life Leave</option>
-                <option>Holidays</option>
                 <option>Celebration Leave</option>
                 <option>Legacy PTO</option>
               </select>
             </div>
-            <div>
+            <div id="f-hours-wrap">
               <label class="form-label">Hours used</label>
-              <input type="number" id="f-hours" placeholder="8" min="0" step="0.5"/>
+              <input type="number" id="f-hours" placeholder="7.75" min="0" step="0.25"/>
             </div>
           </div>
           <button class="btn btn-primary" onclick="addEntry()">Save entry</button>
@@ -250,7 +248,6 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
               <select id="a-type">
                 <option>PTO</option>
                 <option>Life Leave</option>
-                <option>Holidays</option>
                 <option>Celebration Leave</option>
                 <option>Legacy PTO</option>
               </select>
@@ -261,6 +258,31 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
             </div>
           </div>
           <button class="btn btn-ghost" onclick="addAccrual()">Add hours</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:4px">
+        <div class="card-head" style="color:var(--teal)">Add Holiday</div>
+        <div style="padding:14px 16px">
+          <div class="form-section">
+            <label class="form-label">Holiday name</label>
+            <input type="text" id="h-title" placeholder="e.g. Memorial Day"/>
+          </div>
+          <div class="form-section">
+            <label class="form-label">Date</label>
+            <div style="position:relative">
+              <input type="text" id="h-date-text" placeholder="MM/DD/YYYY" maxlength="10"
+                oninput="syncHolidayDate(this.value)"
+                style="padding-right:42px"/>
+              <input type="date" id="h-date" tabindex="-1"
+                style="position:absolute;top:0;right:0;width:42px;height:100%;opacity:0;cursor:pointer;padding:0"
+                oninput="syncHolidayDateFromPicker(this.value)"/>
+              <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--muted)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              </span>
+            </div>
+          </div>
+          <button class="btn btn-ghost" style="border-color:rgba(52,211,153,.3);color:var(--teal)" onclick="addHoliday()">Add to calendar</button>
         </div>
       </div>
     </div>
@@ -315,9 +337,10 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 <div class="toast" id="toast"></div>
 
 <script>
-const TYPES=['PTO','Life Leave','Holidays','Celebration Leave','Legacy PTO'];
-const COLORS={'PTO':'var(--accent)','Life Leave':'var(--red)','Holidays':'var(--teal)','Celebration Leave':'var(--purple)','Legacy PTO':'var(--amber)'};
-const DOT_COLORS={'PTO':'#c8f060','Life Leave':'#ff6b6b','Holidays':'#34d399','Celebration Leave':'#a78bfa','Legacy PTO':'#fbbf24'};
+const TYPES=['PTO','Life Leave','Celebration Leave','Legacy PTO'];
+const COLORS={'PTO':'var(--accent)','Life Leave':'var(--red)','Celebration Leave':'var(--purple)','Legacy PTO':'var(--amber)'};
+const DOT_COLORS={'PTO':'#c8f060','Life Leave':'#ff6b6b','Celebration Leave':'#a78bfa','Legacy PTO':'#fbbf24'};
+const ALL_TYPES=[...TYPES,'Holidays']; // includes Holidays for calendar/log display
 const KE='pto_entries',KB='pto_balances',KA='pto_accrual',KS='pto_schedule',KL='pto_last_accrual';
 
 const load=k=>{try{return JSON.parse(localStorage.getItem(k)||'null')}catch{return null}};
@@ -325,8 +348,8 @@ const save=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 
 const getState=()=>({
   entries:load(KE)||[],
-  balances:load(KB)||{'PTO':0,'Life Leave':0,'Holidays':0,'Celebration Leave':0,'Legacy PTO':0},
-  accrual:load(KA)||{'PTO':5.959,'Life Leave':0,'Holidays':0,'Celebration Leave':0,'Legacy PTO':0},
+  balances:load(KB)||{'PTO':0,'Life Leave':0,'Celebration Leave':0,'Legacy PTO':0},
+  accrual:load(KA)||{'PTO':5.959,'Life Leave':0,'Celebration Leave':0,'Legacy PTO':0},
   schedule:load(KS)||{type:'biweekly',startDate:'2026-05-29',hoursPerPeriod:5.959,applyTo:'PTO'},
   lastAccrual:load(KL)||null
 });
@@ -381,6 +404,7 @@ function toast(msg){
 function fmt(h){const n=parseFloat(h)||0;return n.toFixed(2)+'h'}
 function fmtDate(d){if(!d)return'';const p=d.split('-');return`${months[+p[1]-1]} ${+p[2]}, ${p[0]}`}
 function badgeCls(t){return t==='Life Leave'?'sick':t==='Holidays'?'holiday':t==='Celebration Leave'?'personal':t==='Legacy PTO'?'legacy':'vacation'}
+const TYPE_COLOR_HEX_ALL={'PTO':'#c8f060','Life Leave':'#ff6b6b','Holidays':'#34d399','Celebration Leave':'#a78bfa','Legacy PTO':'#fbbf24'};
 
 function showTab(t){
   ['balance','calendar','log','add','settings'].forEach(x=>{
@@ -407,97 +431,98 @@ function renderBalance(){
   const isProjected=asOfStr>todayStr;
   const isPast=asOfStr<todayStr;
 
-  // label
   const labelEl=document.getElementById('bal-as-of-label');
   if(asOfStr===todayStr) labelEl.textContent='today';
   else if(isProjected) labelEl.textContent='projected';
   else labelEl.textContent='as of';
 
-  // start from current saved balances
+  // always start fresh from zero and replay entries + accruals up to asOfStr
   let projected={};
+  TYPES.forEach(t=>projected[t]=0);
+
+  // add all accruals from schedule start up to asOf
+  if(schedule && schedule.startDate && schedule.hoursPerPeriod){
+    const schedStart=stripTime(new Date(schedule.startDate+'T12:00:00'));
+    const asOfDate=stripTime(new Date(asOfStr+'T12:00:00'));
+    const pays=getPayDates(schedule.startDate,schedule.type,schedStart,asOfDate);
+    const target=schedule.applyTo||'PTO';
+    projected[target]=(projected[target]||0)+pays.length*schedule.hoursPerPeriod;
+  }
+
+  // add any manual accruals stored in balances that aren't from the schedule
+  // since we can't distinguish, use saved balances as the base and adjust for schedule difference
+  // actually: use saved balances + undo all auto-accruals that happened up to today, then redo up to asOf
+  // simpler: use saved balances as today's truth, then adjust delta
   TYPES.forEach(t=>projected[t]=balances[t]||0);
 
-  if(asOfStr!==todayStr){
-    // add/subtract accruals between today and asOf
-    if(isProjected && schedule && schedule.startDate && schedule.hoursPerPeriod){
-      const tomorrow=new Date(stripTime(new Date()).getTime()+86400000);
-      const asOfDate=stripTime(new Date(asOfStr+'T12:00:00'));
+  // adjust for accrual delta between today and asOf
+  if(schedule && schedule.startDate && schedule.hoursPerPeriod){
+    const target=schedule.applyTo||'PTO';
+    const todayDate=stripTime(new Date(todayStr+'T12:00:00'));
+    const asOfDate=stripTime(new Date(asOfStr+'T12:00:00'));
+    if(isProjected){
+      const tomorrow=new Date(todayDate.getTime()+86400000);
       const futurePays=getPayDates(schedule.startDate,schedule.type,tomorrow,asOfDate);
-      const target=schedule.applyTo||'PTO';
       projected[target]=(projected[target]||0)+futurePays.length*schedule.hoursPerPeriod;
+    } else if(isPast){
+      const asOfDateP1=new Date(asOfDate.getTime()+86400000);
+      const pastPays=getPayDates(schedule.startDate,schedule.type,asOfDateP1,todayDate);
+      projected[target]=(projected[target]||0)-pastPays.length*schedule.hoursPerPeriod;
     }
-    // subtract entries that fall on or before asOf but AFTER today (future planned PTO)
-    // add back entries that fall after asOf (not yet taken as of that date)
-    entries.forEach(e=>{
-      const eStart=e.start;
-      if(isProjected){
-        // future entries up to asOf are already deducted (they're in saved balances only if already logged)
-        // entries logged with start > today haven't been deducted yet from current balance
-        // actually balances already reflect all logged entries regardless of date
-        // so we need to ADD BACK entries that start AFTER asOf (not taken yet by that date)
-        if(eStart>asOfStr){
-          projected[e.type]=(projected[e.type]||0)+e.hours;
-        }
-      } else if(isPast){
-        // add back entries that start AFTER asOf (taken after that date)
-        if(eStart>asOfStr){
-          projected[e.type]=(projected[e.type]||0)+e.hours;
-        }
-        // subtract accruals that happened between asOf and today
-        if(schedule && schedule.startDate && schedule.hoursPerPeriod){
-          const asOfDate=stripTime(new Date(asOfStr+'T12:00:00'));
-          const todayDate=stripTime(new Date(todayStr+'T12:00:00'));
-          const pastPays=getPayDates(schedule.startDate,schedule.type,new Date(asOfDate.getTime()+86400000),todayDate);
-          const target=schedule.applyTo||'PTO';
-          projected[target]=(projected[target]||0)-pastPays.length*schedule.hoursPerPeriod;
-        }
-      }
-    });
   }
 
-  // dedupe the past-accrual subtraction (forEach runs per entry, should be outside)
-  // rebuild cleanly for past dates
-  if(isPast && schedule && schedule.startDate && schedule.hoursPerPeriod){
-    TYPES.forEach(t=>projected[t]=balances[t]||0);
-    entries.forEach(e=>{if(e.start>asOfStr) projected[e.type]=(projected[e.type]||0)+e.hours;});
-    const asOfDate=stripTime(new Date(asOfStr+'T12:00:00'));
-    const todayDate=stripTime(new Date(todayStr+'T12:00:00'));
-    const pastPays=getPayDates(schedule.startDate,schedule.type,new Date(asOfDate.getTime()+86400000),todayDate);
-    const target=schedule.applyTo||'PTO';
-    projected[target]=(projected[target]||0)-pastPays.length*schedule.hoursPerPeriod;
-  }
+  // adjust for entries: add back entries after asOf, subtract entries after today that are before/on asOf
+  entries.forEach(e=>{
+    if(isProjected){
+      // entries after asOf haven't happened yet at that date — add them back
+      if(e.start>asOfStr) projected[e.type]=(projected[e.type]||0)+e.hours;
+    } else if(isPast){
+      // entries after asOf haven't happened yet at that date — add them back
+      if(e.start>asOfStr) projected[e.type]=(projected[e.type]||0)+e.hours;
+    }
+  });
 
   const cardClass=t=>t==='PTO'?'pto':t==='Life Leave'?'lifeleave':t==='Holidays'?'holiday':t==='Celebration Leave'?'celebration':'legacypto';
   document.getElementById('bal-grid').innerHTML=TYPES.map(t=>`
     <div class="bal-card ${cardClass(t)}">
       <div class="bal-type">${t}</div>
       <div class="bal-val ${(projected[t]||0)<0?'negative':''}">${fmt(projected[t]||0)}</div>
-      <div class="bal-days">${((projected[t]||0)/8).toFixed(1)} days</div>
+      <div class="bal-days">${((projected[t]||0)/8).toFixed(2)} days</div>
     </div>`).join('');
 
   // projection note
   const noteEl=document.getElementById('bal-projection-note');
-  if(isProjected && schedule && schedule.hoursPerPeriod){
-    const tomorrow=new Date(stripTime(new Date()).getTime()+86400000);
+  if(asOfStr!==todayStr && schedule && schedule.hoursPerPeriod){
+    const todayDate=stripTime(new Date(todayStr+'T12:00:00'));
     const asOfDate=stripTime(new Date(asOfStr+'T12:00:00'));
-    const futurePays=getPayDates(schedule.startDate,schedule.type,tomorrow,asOfDate);
-    const plannedAfter=entries.filter(e=>e.start>todayStr&&e.start<=asOfStr);
+    let pays=[];
+    if(isProjected){
+      const tomorrow=new Date(todayDate.getTime()+86400000);
+      pays=getPayDates(schedule.startDate,schedule.type,tomorrow,asOfDate);
+    } else {
+      const asOfDateP1=new Date(asOfDate.getTime()+86400000);
+      pays=getPayDates(schedule.startDate,schedule.type,asOfDateP1,todayDate);
+    }
+    const entriesAfterToday=entries.filter(e=>e.start>asOfStr);
+    const sign=isProjected?'+':'−';
     noteEl.innerHTML=`<div style="font-size:12px;color:var(--muted);background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:14px;line-height:1.6">
-      <span style="color:var(--accent);font-weight:500">+${(futurePays.length*schedule.hoursPerPeriod).toFixed(3)}h</span> accruing over ${futurePays.length} pay period${futurePays.length!==1?'s':''}
-      ${plannedAfter.length?` · <span style="color:var(--red);font-weight:500">${plannedAfter.length} planned entry${plannedAfter.length!==1?'s':''}</span> deducted`:''}
+      <span style="color:${isProjected?'var(--accent)':'var(--red)'};font-weight:500">${sign}${(pays.length*schedule.hoursPerPeriod).toFixed(2)}h</span> ${isProjected?'accruing':'removed'} across ${pays.length} pay period${pays.length!==1?'s':''}
+      ${entriesAfterToday.length?` · <span style="font-weight:500">${entriesAfterToday.length} entr${entriesAfterToday.length!==1?'ies':'y'}</span> excluded after this date`:''}
     </div>`;
   } else {
     noteEl.innerHTML='';
   }
 
-  const sorted=[...entries].sort((a,b)=>b.id-a.id).slice(0,5);
+  // recent = upcoming entries only (start >= today), sorted soonest first
+  const upcoming=[...entries].filter(e=>e.start>=todayStr).sort((a,b)=>a.start.localeCompare(b.start));
   const el=document.getElementById('recent-list');
-  if(!sorted.length){el.innerHTML='<div class="empty">No entries yet — add your first time off above</div>';return;}
-  el.innerHTML=`<div class="card">${sorted.map(e=>entryHTML(e,false)).join('')}</div>`;
+  if(!upcoming.length){el.innerHTML='<div class="empty">No upcoming time off planned</div>';return;}
+  el.innerHTML=`<div class="card">${upcoming.map(e=>entryHTML(e,false)).join('')}</div>`;
 }
 
 function entryHTML(e,del=true){
   const dates=e.end&&e.end!==e.start?`${fmtDate(e.start)} – ${fmtDate(e.end)}`:fmtDate(e.start);
+  const isHoliday=e.type==='Holidays';
   return`<div class="entry">
     <div class="entry-left">
       <div class="entry-title">${e.title||'Untitled'}</div>
@@ -505,8 +530,8 @@ function entryHTML(e,del=true){
       <span class="badge ${badgeCls(e.type)}">${e.type}</span>
     </div>
     <div class="entry-right">
-      <div class="entry-hrs">−${fmt(e.hours)}</div>
-      ${del?`<button class="entry-del" onclick="deleteEntry(${e.id})">delete</button>`:''}
+      ${isHoliday?'':`<div class="entry-hrs">−${fmt(e.hours)}</div>`}
+      ${del?`<button class="entry-del" data-id="${e.id}" onclick="deleteEntry(this)">delete</button>`:''}
     </div>
   </div>`;
 }
@@ -521,13 +546,61 @@ function renderLog(){
   el.innerHTML=`<div class="card">${sorted.map(e=>entryHTML(e,true)).join('')}</div>`;
 }
 
+function toggleHoursField(){
+  // Holidays removed from main form; kept for future extensibility
+}
+
+function syncHolidayDate(val){
+  // auto-format as user types MM/DD/YYYY
+  let v=val.replace(/\D/g,'');
+  if(v.length>4) v=v.slice(0,2)+'/'+v.slice(2,4)+'/'+v.slice(4,8);
+  else if(v.length>2) v=v.slice(0,2)+'/'+v.slice(2);
+  document.getElementById('h-date-text').value=v;
+  // sync hidden date picker if complete
+  if(v.length===10){
+    const parts=v.split('/');
+    const iso=`${parts[2]}-${parts[0]}-${parts[1]}`;
+    if(!isNaN(new Date(iso))) document.getElementById('h-date').value=iso;
+  }
+}
+
+function syncHolidayDateFromPicker(iso){
+  if(!iso) return;
+  const p=iso.split('-');
+  document.getElementById('h-date-text').value=`${p[1]}/${p[2]}/${p[0]}`;
+  document.getElementById('h-date').value=iso;
+}
+
+function addHoliday(){
+  const title=document.getElementById('h-title').value.trim();
+  const dateText=document.getElementById('h-date-text').value.trim();
+  const dateIso=document.getElementById('h-date').value;
+  // resolve date from either source
+  let finalDate=dateIso;
+  if(!finalDate&&dateText.length===10){
+    const p=dateText.split('/');
+    finalDate=`${p[2]}-${p[0]}-${p[1]}`;
+  }
+  if(!title||!finalDate||isNaN(new Date(finalDate))){toast('Enter holiday name and a valid date');return;}
+  const s=getState();
+  s.entries.push({id:Date.now(),title,start:finalDate,end:finalDate,type:'Holidays',hours:0});
+  save(KE,s.entries);
+  document.getElementById('h-title').value='';
+  document.getElementById('h-date-text').value='';
+  document.getElementById('h-date').value='';
+  toast('Holiday added to calendar ✓');
+  showTab('calendar');
+}
+
 function addEntry(){
   const title=document.getElementById('f-title').value.trim();
   const start=document.getElementById('f-start').value;
   const end=document.getElementById('f-end').value;
   const type=document.getElementById('f-type').value;
-  const hours=parseFloat(document.getElementById('f-hours').value);
-  if(!title||!start||!hours||isNaN(hours)){toast('Fill in all fields');return;}
+  const hoursVal=document.getElementById('f-hours').value;
+  const hours=hoursVal?parseFloat(hoursVal):7.75;
+  if(!title||!start){toast('Fill in title and date');return;}
+  if(isNaN(hours)){toast('Enter valid hours');return;}
   const s=getState();
   s.entries.push({id:Date.now(),title,start,end:end||start,type,hours});
   s.balances[type]=(s.balances[type]||0)-hours;
@@ -552,14 +625,34 @@ function addAccrual(){
   showTab('balance');
 }
 
-function deleteEntry(id){
-  if(!confirm('Delete this entry and restore hours?'))return;
-  const s=getState();
-  const e=s.entries.find(x=>x.id===id);
-  if(e)s.balances[e.type]=(s.balances[e.type]||0)+e.hours;
-  s.entries=s.entries.filter(x=>x.id!==id);
-  save(KE,s.entries);save(KB,s.balances);
-  toast('Entry deleted');renderLog();
+function deleteEntry(btn){
+  // two-step: first tap shows "confirm?" second tap deletes
+  if(btn.dataset.confirming){
+    const sid=String(btn.dataset.id);
+    const s=getState();
+    const e=s.entries.find(x=>String(x.id)===sid);
+    if(!e){renderLog();return;}
+    if(e.type!=='Holidays'&&e.hours) s.balances[e.type]=(s.balances[e.type]||0)+e.hours;
+    s.entries=s.entries.filter(x=>String(x.id)!==sid);
+    save(KE,s.entries);save(KB,s.balances);
+    toast('Entry deleted ✓');
+    renderLog();
+  } else {
+    // first tap — change button to confirm state
+    btn.dataset.confirming='1';
+    btn.textContent='confirm?';
+    btn.style.color='var(--red)';
+    btn.style.borderColor='rgba(255,107,107,.4)';
+    // auto-reset after 3 seconds if not confirmed
+    setTimeout(()=>{
+      if(btn.dataset.confirming){
+        delete btn.dataset.confirming;
+        btn.textContent='delete';
+        btn.style.color='';
+        btn.style.borderColor='';
+      }
+    },3000);
+  }
 }
 
 function renderSettings(){
@@ -657,7 +750,7 @@ function clearAll(){
 }
 
 // --- Calendar ---
-const TYPE_COLORS_HEX={'PTO':'#c8f060','Life Leave':'#ff6b6b','Holidays':'#34d399','Celebration Leave':'#a78bfa','Legacy PTO':'#fbbf24'};
+const TYPE_COLORS_HEX=TYPE_COLOR_HEX_ALL;
 let calYear=now.getFullYear(), calMonth=now.getMonth(), calSelected=null;
 
 function calPrev(){calMonth--;if(calMonth<0){calMonth=11;calYear--;}calSelected=null;renderCalendar();}
@@ -756,11 +849,13 @@ function renderCalDayEntries(ds, entries){
 function calEntryPill(e){
   const dates=e.end&&e.end!==e.start?`${fmtDate(e.start)} – ${fmtDate(e.end)}`:fmtDate(e.start);
   const color=TYPE_COLORS_HEX[e.type]||'#888';
+  const isHoliday=e.type==='Holidays';
+  const meta=isHoliday?`${e.type} · ${dates}`:`${e.type} · ${fmt(e.hours)} · ${dates}`;
   return`<div class="cal-entry-pill">
     <div class="cal-entry-bar" style="background:${color}"></div>
     <div class="cal-entry-info">
       <div class="cal-entry-name">${e.title||'Untitled'}</div>
-      <div class="cal-entry-meta">${e.type} · ${fmt(e.hours)} · ${dates}</div>
+      <div class="cal-entry-meta">${meta}</div>
     </div>
   </div>`;
 }
